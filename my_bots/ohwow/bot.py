@@ -272,6 +272,11 @@ class Profile:
     def vpip(self):
         return min(1.0, (self.vpip_n + self.PRIOR * 0.35) / (self.hands + self.PRIOR))
 
+    def shove_rate(self):
+        """Share of hands they shove all-in preflop (they act first in ~half of them,
+        so a bot that shoves every time it opens scores ~1.0). Smoothed for early reads."""
+        return min(1.0, self.allins / (0.5 * self.hands + 4.0))
+
     def shover(self):
         """True once they have shoved all-in preflop in most of the hands seen."""
         return self.allins >= 2 and self.allins / max(self.hands, 1) > 0.7
@@ -412,7 +417,8 @@ class OpponentModel:
     def view(self, ids=None):
         prof = self._combined(ids)
         return {"fold": prof.fold_to_bet(), "aggr": prof.aggression(),
-                "vpip": prof.vpip(), "shover": prof.shover()}
+                "vpip": prof.vpip(), "shover": prof.shover(),
+                "shove_rate": prof.shove_rate()}
 
     def ctx_fold(self, ids, street, depth, bucket, base):
         """P(fold) to OUR bet/raise in this context. `depth` = raises that
@@ -568,6 +574,12 @@ def _decide_core(state):
     shover = bool(view.get("shover")) and pre and eff > 12 * bb
     if shover:
         t = 0.0                # an opponent that shoves every hand holds a random hand
+    # a bot that shoves a WIDE part of its range (30-60% of hands) holds a wide range,
+    # not "a big bet = premium": price the call against the range it really shoves
+    wide_shove = (pre and not shover and eff > 12 * bb and to_call >= 0.3 * stack
+                  and view.get("shove_rate", 0.0) > 0.18)
+    if wide_shove:
+        t = min(t, max(0.0, 1.0 - 1.15 * view["shove_rate"]))
     if n_opp > 1:
         t *= 0.7
     eq = equity(hole, board, n_opp, tight=t, budget=state.get("time_budget", CONFIG["time_budget"]))
@@ -593,10 +605,19 @@ def _decide_core(state):
             return int(stack)
         return int(x)
 
+    if wide_shove:
+        # Every call risks the whole match, folding only costs a blind: when deep, wait
+        # for a hand clearly ahead of their (wide) range instead of calling at break-even.
+        po = to_call / (pot + to_call)
+        deep = min(1.0, max(0.0, (eff / bb - 20.0) / 60.0))
+        return ("call", 0) if eq > po + 0.035 + 0.10 * deep else ("fold", 0)
+
     # ---- exploit: opponent shoves all-in every hand. Every call risks the whole
     # match, so wait for a premium hand (win chance ~70%+) and fold the rest.
     if shover and (to_call >= 0.3 * stack or 0 < to_call <= bb):
-        if eq > 0.68:
+        # folding costs a blind, a call risks the match: when deep, wait for AA-QQ class hands
+        need = 0.68 + 0.12 * min(1.0, max(0.0, (eff / bb - 15.0) / 35.0))
+        if eq > need:
             return ("raise", int(stack)) if (can_raise and to_call < stack) else ("call", 0)
         return ("fold", 0) if to_call > 0 else ("check", 0)
 

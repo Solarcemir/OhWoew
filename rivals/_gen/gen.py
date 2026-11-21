@@ -287,6 +287,67 @@ def decide(gs):
     return call(gs) if e > odds + 0.04 + 0.05 * r else {"action": "fold"}
 '''
 
+BOTS["jammer"] = '''
+# ALL-IN STYLE: shoves any decent preflop hand (top ~45% as opener, top ~30% to call), limps/folds the rest;
+# postflop it only continues with a pair or better and shoves those.
+def decide(gs):
+    if gs.get("type") == "warmup":
+        return {"action": "check"}
+    e = eqty(gs, 100)
+    pre, owed, pot, odds, bb, stack = info(gs)
+    if pre:
+        if owed > bb:                             # facing a raise or shove
+            return shove(gs) if e > 0.62 else ({"action": "fold"} if owed > 2 * bb else call(gs))
+        return shove(gs) if e > 0.52 else call(gs)
+    if e > 0.62:
+        return shove(gs)
+    return passive(gs)
+'''
+
+BOTS["shovefold"] = '''
+# ALL-IN STYLE: push/fold at every depth - shoves ~60% of hands when first in, calls shoves with ~35%.
+def decide(gs):
+    if gs.get("type") == "warmup":
+        return {"action": "check"}
+    e = eqty(gs, 100)
+    pre, owed, pot, odds, bb, stack = info(gs)
+    if pre:
+        if owed > bb:
+            return call(gs) if e > 0.57 else {"action": "fold"}
+        return shove(gs) if e > 0.47 else passive(gs)
+    return call(gs) if (gs["can_check"] or e > odds + 0.05) else {"action": "fold"}
+'''
+
+BOTS["overbet"] = '''
+# ALL-IN STYLE: sees a flop cheaply, then shoves the flop/turn with a made hand AND ~25% of the time with air.
+def decide(gs):
+    if gs.get("type") == "warmup":
+        return {"action": "check"}
+    e = eqty(gs, 100)
+    pre, owed, pot, odds, bb, stack = info(gs)
+    if pre:
+        return call(gs) if (e > 0.42 or not owed or owed <= bb) else {"action": "fold"}
+    if e > 0.66 or (e < 0.35 and random.random() < 0.25 and gs["can_check"]):
+        return shove(gs)
+    return call(gs) if e > odds + 0.1 else passive(gs)
+'''
+
+BOTS["trapshove"] = '''
+# ALL-IN STYLE (trap): limps / calls, then re-shoots over any raise with the top of its range; folds the rest.
+def decide(gs):
+    if gs.get("type") == "warmup":
+        return {"action": "check"}
+    e = eqty(gs, 100)
+    pre, owed, pot, odds, bb, stack = info(gs)
+    if owed > 0 and (e > 0.7 or (pre and e > 0.62)):
+        return shove(gs)
+    if owed == 0 and not pre and e > 0.8:
+        return shove(gs)
+    if pre:
+        return call(gs) if (owed <= bb or e > 0.55) else {"action": "fold"}
+    return call(gs) if e > odds + 0.1 else passive(gs)
+'''
+
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for name, body in BOTS.items():
     d = os.path.join(root, name)
