@@ -11,9 +11,9 @@ and adapts to whoever it is playing instead of following a fixed script.
 
 ## Video walkthrough
 
-<video controls width="100%">
-  <source src="docs/ohwow_explained.mp4" type="video/mp4">
-</video>
+[![Watch the ohwow walkthrough (about 3 minutes)](docs/ohwow_explained_thumb.png)](docs/ohwow_explained.mp4)
+
+**[▶ Watch the walkthrough](docs/ohwow_explained.mp4)** (about 3 minutes). It opens GitHub's built-in video player.
 
 English narration and subtitles: [`ohwow_explained.srt`](docs/ohwow_explained.srt).
 
