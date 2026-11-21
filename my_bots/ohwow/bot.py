@@ -156,7 +156,7 @@ class Model:
         """How often bets of this exact size (+-0.06 pot) were weak at showdown. Many bots
         use fixed sizes (e.g. 0.6 pot for bluffs and medium hands, 0.75 pot only with
         monsters), so the size is a tell. Raises default to half the bluff rate of bets."""
-        base = self.bluff_frac() * (1.0 if kind == "bet" else RAISE_BLUFF_SCALE)
+        base = self.bluff_frac() * (1.0 if kind == "bet" else self.raise_scale())
         tier = self.size_tier(ratio) if kind == "bet" else None
         if tier == "big":
             base = 0.05          # a two-size bettor's bigger size: value until showdowns say otherwise
@@ -164,6 +164,17 @@ class Model:
             base = max(base, 0.30)   # ...so its bluffs live in the smaller size
         recs = [lv < 1 for k, r, lv in self.size_sd if k == kind and abs(r - ratio) <= 0.06]
         return blend(sum(recs), len(recs), base, 3)
+
+    def raise_scale(self):
+        """Raises are honest by default (half the bluff rate of bets), but an opponent that
+        raises our postflop bets often (> 12%) must be raising light: scale up with its rate."""
+        f = c = r = 0
+        for v in self.resp.values():
+            f, c, r = f + v[0], c + v[1], r + v[2]
+        rate = blend(r, f + c + r, 0.08, 10)
+        if rate <= 0.12:
+            return RAISE_BLUFF_SCALE
+        return min(1.3, RAISE_BLUFF_SCALE * rate / 0.12)
 
     def size_strong(self, kind, ratio):
         """None, or the weight for one-pair hands when bets of this exact size were never
