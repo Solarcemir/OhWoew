@@ -1,0 +1,223 @@
+1
+00:00:00,000 --> 00:00:02,865
+This is ohwow, our heads-up poker bot.
+
+2
+00:00:02,865 --> 00:00:07,368
+In about two minutes, we will show you how it thinks.
+
+3
+00:00:08,168 --> 00:00:11,477
+Every match is one bot against one other bot.
+
+4
+00:00:11,477 --> 00:00:13,683
+Each player gets two private cards,
+
+5
+00:00:13,683 --> 00:00:16,624
+five shared cards come out on the board,
+
+6
+00:00:16,624 --> 00:00:18,462
+and the blinds keep rising.
+
+7
+00:00:18,462 --> 00:00:20,668
+Every time it is our turn,
+
+8
+00:00:20,668 --> 00:00:23,242
+the bot has two seconds to fold,
+
+9
+00:00:23,242 --> 00:00:24,345
+call or raise.
+
+10
+00:00:25,145 --> 00:00:28,395
+Before the tournament, we computed how often every starting
+
+11
+00:00:28,395 --> 00:00:30,201
+hand beats every other one.
+
+12
+00:00:30,201 --> 00:00:34,535
+That is a table of one hundred sixty nine by one hundred
+
+13
+00:00:34,535 --> 00:00:38,147
+sixty nine hands. It tells the bot instantly how strong
+
+14
+00:00:38,147 --> 00:00:39,592
+its two cards are.
+
+15
+00:00:40,392 --> 00:00:44,023
+When stacks get short, at thirteen big blinds or less,
+
+16
+00:00:44,023 --> 00:00:46,202
+poker becomes all in or fold.
+
+17
+00:00:46,202 --> 00:00:49,107
+We solved the Nash equilibrium for this offline,
+
+18
+00:00:49,107 --> 00:00:53,465
+so the bot knows which hands to shove at every stack size.
+
+19
+00:00:53,465 --> 00:00:57,460
+Then it adjusts if the opponent calls too much or too
+
+20
+00:00:57,460 --> 00:00:57,823
+little.
+
+21
+00:00:58,623 --> 00:01:02,006
+After the flop, the bot runs thousands of simulations.
+
+22
+00:01:02,006 --> 00:01:05,765
+It deals random cards to the opponent and finishes the
+
+23
+00:01:05,765 --> 00:01:08,396
+board, then counts how often it wins.
+
+24
+00:01:08,396 --> 00:01:10,275
+That number is its equity.
+
+25
+00:01:10,275 --> 00:01:14,410
+Here, ace king on a king high board wins about ninety
+
+26
+00:01:14,410 --> 00:01:16,289
+one percent of the time.
+
+27
+00:01:17,089 --> 00:01:19,665
+But opponents do not hold random cards.
+
+28
+00:01:19,665 --> 00:01:23,344
+When they bet, they are less likely to have nothing.
+
+29
+00:01:23,344 --> 00:01:27,390
+So every simulated hand is weighted by how well it fits
+
+30
+00:01:27,390 --> 00:01:28,862
+what the opponent did.
+
+31
+00:01:29,662 --> 00:01:31,813
+Then the bot scores every option:
+
+32
+00:01:31,813 --> 00:01:33,964
+check, a third of the pot,
+
+33
+00:01:33,964 --> 00:01:35,757
+two thirds, the full pot,
+
+34
+00:01:35,757 --> 00:01:40,059
+or an overbet. Each score is what we win when they fold,
+
+35
+00:01:40,059 --> 00:01:43,286
+plus what we win or lose when they call.
+
+36
+00:01:43,286 --> 00:01:45,079
+It picks the highest one.
+
+37
+00:01:45,879 --> 00:01:49,716
+The key is that it learns each opponent during the match.
+
+38
+00:01:49,716 --> 00:01:53,203
+It tracks how often they fold to each bet size,
+
+39
+00:01:53,203 --> 00:01:57,040
+how often they bluff, and what their own bet sizes mean.
+
+40
+00:01:57,040 --> 00:02:00,179
+If a bot only bets big with strong hands,
+
+41
+00:02:00,179 --> 00:02:02,621
+ours notices, and stops paying it off.
+
+42
+00:02:03,421 --> 00:02:07,480
+It also defends itself. If an opponent re-raises us too
+
+43
+00:02:07,480 --> 00:02:10,322
+often, or raises our bets too often,
+
+44
+00:02:10,322 --> 00:02:13,163
+the bot stops folding and fights back.
+
+45
+00:02:13,963 --> 00:02:18,006
+It plays seven deuce aggressively for the side prize.
+
+46
+00:02:18,006 --> 00:02:22,497
+It never crashes, because every decision has a safe fallback.
+
+47
+00:02:22,497 --> 00:02:25,641
+And it decides in about fifteen milliseconds.
+
+48
+00:02:26,441 --> 00:02:29,405
+We tested it like the real tournament.
+
+49
+00:02:29,405 --> 00:02:33,639
+Duplicate matches, with the same cards and the seats swapped,
+
+50
+00:02:33,639 --> 00:02:36,180
+against more than forty practice bots,
+
+51
+00:02:36,180 --> 00:02:38,297
+inside the official Docker sandbox.
+
+52
+00:02:38,297 --> 00:02:41,261
+We also simulated thousands of whole tournaments.
+
+53
+00:02:41,261 --> 00:02:45,495
+It wins about eighty percent of its matches against the
+
+54
+00:02:45,495 --> 00:02:46,342
+practice field.
+
+55
+00:02:47,142 --> 00:02:51,553
+Solid math as the base, and opponent learning on top.
+
+56
+00:02:51,553 --> 00:02:52,876
+That is ohwow.
