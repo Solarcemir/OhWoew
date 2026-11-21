@@ -22,7 +22,7 @@ and adapts to whoever it is playing instead of following a fixed script.
 | 6 | **Opponent modeling** | Throughout the match it tracks how often each opponent opens, raises, goes all-in, folds, calls and bluffs, and updates those statistics as observations accumulate. |
 | 7 | **Bet-pattern detection** | It records bet sizes together with the cards shown at showdown. If an opponent consistently uses certain sizes with strong hands or with bluffs, the bot learns the pattern and exploits it. |
 | 8 | **Defending against aggression** | Against opponents that re-raise (3-bet) most of our opens, it treats their re-raise range as wide and calls or re-raises instead of folding. Postflop raises are assumed honest by default, but against opponents that raise our bets often they are read as including bluffs. |
-| 9 | **Additional features** | A trap mode adjusts small bets against opponents that attack them, and error handling falls back to a valid action if anything fails. Median decision time is about 15 ms. |
+| 9 | **Additional features** | A trap mode adjusts small bets against opponents that attack them, 7-2 is played aggressively for the 7-2 side prize, and error handling falls back to a valid action if anything fails. Median decision time is about 15 ms. |
 
 ## Overall
 

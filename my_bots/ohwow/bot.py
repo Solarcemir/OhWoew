@@ -72,7 +72,7 @@ for _a in range(52):
         if _a != _b:
             CLS52[_a, _b] = _cls_of(DECK_STR[_a], DECK_STR[_b])
 
-SEVEN_DEUCE = False       # play 7-2 aggressively (3-bet bluffs, barrels) for the "most won off 7-2" prize
+SEVEN_DEUCE = True        # play 7-2 aggressively (3-bet bluffs, barrels) for the "most won off 7-2" prize
 RAISE_BLUFF_SCALE = 0.5   # postflop raises are bluffs half as often as bets, until showdowns say otherwise
 START_MODE = "solid"     # "bait" starts with the size tell; arena tests showed it costs chips vs AI-written bots
 POSTS = ("small_blind", "big_blind", "ante")
