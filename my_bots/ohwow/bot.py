@@ -538,6 +538,7 @@ def _decide_core(state):
         raises = 0 if (to_call == 0 or (pre and to_call <= bb)) else \
             (1 if (not pre or to_call < 6 * bb) else 2)
     depth = min(raises, 2)                      # depth of OUR next bet/raise
+    barrels = int(state.get("barrels") or 0)    # they already called our bet(s) this hand
 
     # --- what do their actions say about their hand? (range narrowing) ---
     t = _tightness(to_call, pot, bb, pre, view)
@@ -554,6 +555,10 @@ def _decide_core(state):
                 t *= 0.55          # re-raises us constantly: mostly pressure/bluffs
             elif rr_freq < 0.08:
                 t = min(0.9, t * 1.25 + 0.05)   # rarely re-raises: it's the nuts
+    if barrels and not pre:
+        # someone who calls our flop and turn bets is not folding to a third:
+        # their range is "pairs and better", not air.
+        t = 1 - (1 - t) * (1 - 0.12 * barrels)
     if not (pre and to_call <= bb):
         hist = MODEL.hand_tight(ids)           # earlier streets still count
         t = 1 - (1 - t) * (1 - (0.6 if to_call > 0 else 0.3) * hist)
@@ -571,6 +576,8 @@ def _decide_core(state):
     def fold_info(frac):
         base = view["fold"] * (0.75 + 0.5 * min(frac, 1.5))
         p, n = MODEL.ctx_fold(ids, sidx, depth, _bucket(frac), base)
+        if barrels and n < 6:            # little data on this spot: assume the second/third
+            p *= 0.6 ** barrels          # barrel folds far less than the first bet did
         return min(0.92, max(0.02, p)), n
 
     def fold_at(frac, n=n_opp):                # P(all opponents fold)
@@ -866,7 +873,15 @@ def _to_internal(gs):
     log = gs.get("action_log") or []
     raises = sum(1 for e in log if e.get("street") == street and e.get("action") in ("raise", "all_in"))
     pre_raises = [e for e in log if e.get("street") == "preflop" and e.get("action") in ("raise", "all_in")]
+    barrels = 0                      # earlier POSTFLOP streets where we bet and they called
+    for i, e in enumerate(log):
+        if (e.get("street") not in ("preflop", street) and e.get("seat") == me
+                and e.get("action") in ("raise", "all_in")):
+            nxt = [x for x in log[i + 1:] if x.get("street") == e.get("street")]
+            if nxt and nxt[0].get("seat") != me and nxt[0].get("action") == "call":
+                barrels += 1
     return {
+        "barrels": barrels,
         "hole": gs["your_cards"],
         "board": gs.get("community_cards") or [],
         "pot": gs["pot"],
