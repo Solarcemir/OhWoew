@@ -41,7 +41,48 @@ set BOT_ENV_ALLOW=SYSTEMROOT,WINDIR      # Windows only: the kit strips these an
 
 On Mac, Linux or WSL, use the normal kit setup and drop the `BOT_ENV_ALLOW` line.
 
-## Current luis_bot = v4
+## Current entry: v1 (main `my_bots/ohwow` and `my_bots/luis_bot` here)
+Final decision (15:05). Against **11 real competitor bots** found in public repos made from the kit, all run in
+the Docker sandbox, 8 duplicate pairs each:
+
+| opponent (repo) | v1 | v4 |
+|---|---|---|
+| overall | **78% ±6%** | 73% ±6% |
+| redteamers007 (blackbeltwad) | 50% | 38% |
+| CFR (ray-bao-dev) | 62% | 50% |
+| solver (gavinok29-bit) | 75% | 62% |
+| hsr (ray-bao-dev) | 75% | 69% |
+| nash (gavinok29-bit) | 81% | 62% |
+| 404_chips_not_found (wlane050) | 81% | 75% |
+| pluribus (gavinok29-bit) | 75% | 88% |
+| neural_netv2 (ray-bao-dev) | 94% | 81% |
+| counter_nash, gamepigeon, superxavier | 100% | 100% |
+
+Several gavinok bots logged hundreds of timeouts and errors in the sandbox, and gamepigeon crashed on every
+decision. Those teams may fix their bots before the deadline. Their code is not in this repo.
+
+**Event simulation** (`tools/tourney_mc.py`): 20,000 events in the announced format (one duplicate pair per
+pairing, top 4, knockout), with 33 opponents drawn from our 23 practice bots:
+
+| version | P(top 4) | P(champion) |
+|---|---|---|
+| v1 | 93.7% | 58.9% |
+| v6b | 94.8% | 55.0% |
+| v4 | 92.2% | 50.1% |
+| v6a | 94.5% | 49.8% |
+| v5 | 92.7% | 46.0% |
+| ohwow (Arkesh) | 65.8% | 18.8% |
+| v2 / v3 | ~90% / ~85% | ~35% |
+
+The practice field is weaker than the real one, so treat these probabilities as optimistic.
+
+New tools:
+- `tools/tournament.py`: plays whole events end to end.
+- `tools/tourney_mc.py`: fast Monte Carlo from `arena.py --json` files.
+- `tools/prizes.py`: the four measured prizes from logs.
+- `tools/arena.py --docker`: runs every bot in the sandbox.
+
+## luis_bot v4 (now `sparring/our_v4`)
 v4 is v1 plus three changes:
 - **All-in counting.** It counts the hands in which the opponent goes all-in, and learns how often it shoves first and over our open. A habitual shover's all-ins are treated as a wide range.
 - **More simulations.** Postflop Monte Carlo goes from 3,000 to 8,000 samples (0.35 s cap). In the Docker sandbox, decisions take 47 ms median and 192 ms at most, with 0 errors.

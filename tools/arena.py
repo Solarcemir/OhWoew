@@ -52,26 +52,27 @@ class NullLog:
         return {"i": self.n, "type": event_type, **data}
 
 
-def play_one(paths, names, seed, hands_cap, time_limit_ms):
-    """One freezeout match; returns {name: (place, final_stack, timeouts, errors)} and hands."""
+def play_one(paths, names, seed, hands_cap, time_limit_ms, docker=False):
+    """One freezeout match; returns {name: (place, final_stack, timeouts, errors)} and hands.
+    docker=True runs every bot in the tournament sandbox (no network, read-only, half a core)."""
     bots = [Bot(n, p) for n, p in zip(names, paths)]
     os.environ["BOT_MATCH_SEED"] = str(seed)   # only the test-only sparring/supreme bot reads this
     config = MatchConfig(mode="freezeout", hands=hands_cap, starting_stack=10_000,
                          structure=structures.parse("standard", 10_000), seed=seed,
                          time_limit_ms=time_limit_ms)
-    seats = [BotSeat(b, seed=derive_seed(seed, "bot", b.name), time_limit_ms=time_limit_ms)
-             for b in bots]
+    seats = [BotSeat(b, seed=derive_seed(seed, "bot", b.name), time_limit_ms=time_limit_ms,
+                     use_docker=docker) for b in bots]
     result = play_match(seats, config, f"arena-{seed}", NullLog())
     out = {r["bot"]: (r["place"], r["final_stack"], r.get("timeouts", 0) or 0,
                       r.get("errors", 0) or 0) for r in result["results"]}
     return out, result["hands"]
 
 
-def play_pair(a, b, seed, hands_cap, time_limit_ms):
+def play_pair(a, b, seed, hands_cap, time_limit_ms, docker=False):
     """Duplicate pair: (a, b) then (b, a) on the same seed."""
     (na, pa), (nb, pb) = a, b
-    r1, h1 = play_one([pa, pb], [na, nb], seed, hands_cap, time_limit_ms)
-    r2, h2 = play_one([pb, pa], [nb, na], seed, hands_cap, time_limit_ms)
+    r1, h1 = play_one([pa, pb], [na, nb], seed, hands_cap, time_limit_ms, docker)
+    r2, h2 = play_one([pb, pa], [nb, na], seed, hands_cap, time_limit_ms, docker)
     return na, nb, seed, r1, r2, h1 + h2
 
 
@@ -89,6 +90,9 @@ def main():
     p.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) // 2))
     p.add_argument("--hands", type=int, default=1000, help="safety cap per match")
     p.add_argument("--time-limit-ms", type=int, default=2000)
+    p.add_argument("--json", help="also write the per-pairing W-D-L counts here (for tools/tourney_mc.py)")
+    p.add_argument("--docker", action="store_true",
+                   help="run every bot in the tournament sandbox (make sandbox first); use for untrusted bots")
     args = p.parse_args()
 
     bots = []
@@ -114,7 +118,7 @@ def main():
     problems = defaultdict(lambda: [0, 0])          # name -> [timeouts, errors]
     t0, done = time.time(), 0
     with ProcessPoolExecutor(max_workers=args.workers) as ex:
-        futs = [ex.submit(play_pair, a, b, s, args.hands, args.time_limit_ms) for a, b, s in jobs]
+        futs = [ex.submit(play_pair, a, b, s, args.hands, args.time_limit_ms, args.docker) for a, b, s in jobs]
         for f in as_completed(futs):
             try:
                 na, nb, seed, r1, r2, hands = f.result()
@@ -167,6 +171,12 @@ def main():
                 ci = 1.96 * (pct * (1 - pct) / tot) ** 0.5
                 row.append(f"{f'{pct:.0%}±{ci:.0%}':>12}")
         print(f"{a:<{width}}" + "".join(row))
+    if args.json:
+        import json
+        with open(args.json, "w") as fh:
+            json.dump({"names": names, "pairs_per_pairing": args.pairs,
+                       "wdl": {f"{a}|{b}": v for (a, b), v in wdl.items()}}, fh)
+        print(f"\nwrote {args.json}")
     print("\nStandings (pair win = 1, draw = 0.5):")
     for n in order:
         rec = [sum(v[i] for (a, _), v in wdl.items() if a == n) for i in range(3)]
