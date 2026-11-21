@@ -666,6 +666,10 @@ def _decide_core(state):
         fracs = [0.33, 0.66, 1.0] + ([spr] if 1.0 < spr <= 2.5 else [])   # shove option
         for frac in fracs:
             b = max(bb, min(frac * pot, eff))
+            if eq < 0.42 and b >= 0.6 * eff:
+                _pf, _nc = fold_info(b / pot)      # a huge bluff needs MEASURED folding,
+                if not (_nc >= 6 and _pf >= 0.7):  # not a size-based guess
+                    continue
             fe = fold_at(b / pot)
             eq_called = eq * (0.95 if eq >= 0.5 else 0.85)   # callers are stronger
             ev = fe * pot + (1 - fe) * (eq_called * (pot + 2 * b) - b)
@@ -683,6 +687,13 @@ def _decide_core(state):
                     p = min(p, min(0.6, 0.35 + 0.15 * k))
                 if size >= 0.5 * eff and spr > 4 and not (nc >= 8 and pf >= 0.8):
                     p = min(p, 0.15)           # deep: huge bluffs risk our stack
+            if barrels >= 2 and eq < 0.5:      # they called two bets already: stop bluffing
+                _pf, _nc = fold_info(size / pot)
+                if not (_nc >= 8 and _pf >= 0.8):
+                    p = min(p, 0.08)
+            if eq < 0.82 and spr > 1.5 and size > 0.66 * pot:
+                size = 0.66 * pot              # medium hands: don't build a huge pot,
+                p *= 0.9                       # callers hold real hands
             if eq > 0.85 and n_opp == 1 and len(board) < 5 and random.random() < 0.2:
                 p = 0.0                        # slow-play monsters sometimes
             if 0.52 < eq < 0.74 and spr > 3 and len(board) in (3, 4):
