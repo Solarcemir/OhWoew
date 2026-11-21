@@ -15,7 +15,7 @@ make install
 make validate BOT=my_bots/ohwow
 python3 play.py my_bots/ohwow bots/caller
 python3 play.py my_bots/ohwow sparring/tag --show --seed 7
-python3 tools/run_matches.py my_bots/ohwow 30 sparring/tag sparring/shover sparring/nit sparring/maniac bots/caller
+python3 tools/run_matches.py my_bots/ohwow 30 sparring/tag sparring/shover sparring/nit sparring/maniac sparring/equity sparring/lag bots/caller
 make sandbox && python3 play.py my_bots/ohwow bots/caller --docker
 ```
 
@@ -31,7 +31,7 @@ make sandbox && python3 play.py my_bots/ohwow bots/caller --docker
 
 ## Layout
 - `my_bots/ohwow/bot.py`: the entry
-- `sparring/`: simple opponents for local testing (not collected)
+- `sparring/`: test opponents (maniac, shover, nit, tag, equity, lag; not collected)
 - `tools/run_matches.py`: many-match runner
 - `legacy_pre_kit/`: early versions written before the kit (not entries)
 - `pokercore/`, `play.py`, `bots/`: the kit; do not edit `pokercore/`

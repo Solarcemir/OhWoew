@@ -183,7 +183,7 @@ def _accept(pct, tight):
 
 
 # ================================================================= equity
-def equity(hole, board, n_opp, tight=0.0, budget=0.15, max_iter=3000):
+def equity(hole, board, n_opp, tight=0.0, budget=0.15, max_iter=12000):
     """Win prob. (ties = half) vs n_opp opponents whose hands are sampled from
     a range narrowed by `tight`."""
     known = set(hole) | set(board)
@@ -239,18 +239,19 @@ def _bucket(frac):
 
 
 class Profile:
-    PRIOR = 8   # pseudo-observations so early reads aren't wild
+    PRIOR = 5   # pseudo-observations so early reads aren't wild (matches can be short)
     K_CTX = 3   # smaller prior for per-situation stats -> deterministic bots
                 # are recognized after a handful of samples
 
     def __init__(self):
         self.hands = self.vpip_n = self.bets = self.calls = 0
+        self.allins = 0     # times they shoved all-in preflop
         self.faced = self.folded = 0
         self.vs_me = {}   # (street, raise depth, our bet bucket) -> [folds, times faced]
         self.shown = {}   # their bet bucket -> [sum hand strength, n] at showdown
 
     def add(self, o):
-        for k in ("hands", "vpip_n", "bets", "calls", "faced", "folded"):
+        for k in ("hands", "vpip_n", "bets", "calls", "faced", "folded", "allins"):
             setattr(self, k, getattr(self, k) + getattr(o, k))
         for mine, theirs in ((self.vs_me, o.vs_me), (self.shown, o.shown)):
             for key, v in theirs.items():
@@ -266,6 +267,10 @@ class Profile:
 
     def vpip(self):
         return min(1.0, (self.vpip_n + self.PRIOR * 0.35) / (self.hands + self.PRIOR))
+
+    def shover(self):
+        """True once they have shoved all-in preflop in most of the hands seen."""
+        return self.allins >= 2 and self.allins / max(self.hands, 1) > 0.7
 
 
 def _never_raise(fn):
@@ -368,6 +373,13 @@ class OpponentModel:
             self.hand_t[player] = 1 - (1 - old) * (1 - inc)
 
     @_never_raise
+    def observe_allin(self, player):
+        """Opponent shoved all-in preflop (completed hands only)."""
+        if player != self.me:
+            self._p(player).allins += 1
+            self.table.allins += 1
+
+    @_never_raise
     def observe_showdown(self, player, hole, board):
         """Call when an opponent's cards are revealed. Teaches us what their
         BETS mean (only counted if they bet this hand)."""
@@ -386,7 +398,7 @@ class OpponentModel:
     def view(self, ids=None):
         prof = self._combined(ids)
         return {"fold": prof.fold_to_bet(), "aggr": prof.aggression(),
-                "vpip": prof.vpip()}
+                "vpip": prof.vpip(), "shover": prof.shover()}
 
     def ctx_fold(self, ids, street, depth, bucket, base):
         """P(fold) to OUR bet/raise in this context. `depth` = raises that
@@ -426,6 +438,14 @@ MODEL = OpponentModel()
 
 
 # ============================================================ reading bets
+def _loose_agg(view):
+    """0 = normal opponent .. 1 = plays almost every hand and raises almost every
+    time (maniac / shover). Scales how little their bets should worry us."""
+    loose = min(1.0, max(0.0, (view["vpip"] - 0.35) / 0.4))
+    aggro = min(1.0, max(0.0, (view["aggr"] - 0.45) / 0.35))
+    return min(loose, aggro)
+
+
 def _tightness(to_call, pot, bb, pre, view):
     """Heuristic: how much a bet narrows the bettor's range (0 = not at all)."""
     if to_call <= 0:
@@ -438,8 +458,9 @@ def _tightness(to_call, pot, bb, pre, view):
     else:
         t = min(0.85, 0.9 * to_call / max(pot - to_call, 1))
     a, v = view["aggr"], view["vpip"]
-    if a > 0.6 and v > 0.35:        # loose-aggressive: bets mean less
-        t *= 0.65
+    loose_agg = _loose_agg(view)
+    if loose_agg > 0:               # loose-aggressive: their bets mean much less
+        t *= 1.0 - 0.7 * loose_agg
     elif a < 0.35 and v < 0.25:     # tight-passive: bets mean a lot
         t *= 1.25
     return min(0.9, t)
@@ -503,6 +524,9 @@ def _decide_core(state):
     t = min(0.92, t)
     if CONFIG["heads_up"] and pre and eff <= 12 * bb:
         t = min(t, 0.4)        # short stacks shove wide: don't assume a premium range
+    shover = bool(view.get("shover")) and pre and eff > 12 * bb
+    if shover:
+        t = 0.0                # an opponent that shoves every hand holds a random hand
     if n_opp > 1:
         t *= 0.7
     eq = equity(hole, board, n_opp, tight=t, budget=state.get("time_budget", CONFIG["time_budget"]))
@@ -525,6 +549,13 @@ def _decide_core(state):
         if x >= eff or stack - x < 0.3 * (pot + x):
             return int(stack)
         return int(x)
+
+    # ---- exploit: opponent shoves all-in every hand. Every call risks the whole
+    # match, so wait for a premium hand (win chance ~70%+) and fold the rest.
+    if shover and (to_call >= 0.3 * stack or 0 < to_call <= bb):
+        if eq > 0.68:
+            return ("raise", int(stack)) if (can_raise and to_call < stack) else ("call", 0)
+        return ("fold", 0) if to_call > 0 else ("check", 0)
 
     # ---- heads-up, first in preflop with a short stack: push chart ----
     if CONFIG["heads_up"] and pre and 0 < to_call <= bb and stack <= 12 * bb and can_raise:
@@ -641,8 +672,8 @@ def _decide_core(state):
         margin += 0.08 * min(1.0, to_call / stack)   # their range is strong, be pickier
     if view["aggr"] < 0.35 and view["vpip"] < 0.25:
         margin += 0.04      # tight-passive bettor: respect them
-    elif view["aggr"] > 0.6 and view["vpip"] > 0.35:
-        margin -= 0.02      # maniac: call down lighter
+    else:
+        margin -= 0.04 * _loose_agg(view)   # maniac: call down lighter
     return ("call", 0) if eq > pot_odds + margin else ("fold", 0)
 
 
@@ -752,6 +783,8 @@ def _replay(entries, bb, record):
             continue
         MODEL.observe_action(e.get("bot_id"), _STREETS.get(st, 0), kind, to_call=owed,
                              pot=pot, amount=added, bb=bb, record=record)
+        if record and act == "all_in" and st == "preflop" and kind == "raise":
+            MODEL.observe_allin(e.get("bot_id"))
         pot += added
         bets[seat] = mine + added
 
