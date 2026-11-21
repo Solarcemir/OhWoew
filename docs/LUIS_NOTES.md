@@ -41,8 +41,31 @@ set BOT_ENV_ALLOW=SYSTEMROOT,WINDIR      # Windows only: the kit strips these an
 
 On Mac, Linux or WSL, use the normal kit setup and drop the `BOT_ENV_ALLOW` line.
 
-## Big comparison (12 duplicate pairs per pairing, seed 4242, vs 12 rivals and each other)
-`luis_bot` here is **v1** (`sparring/our_v1`). `sparring/our_v2` adds two changes: a bet-frequency weighting and learned shove ranges. They did not help.
+## Current luis_bot = v4
+v4 is v1 plus three changes:
+- **All-in counting.** It counts the hands in which the opponent goes all-in, and learns how often it shoves first and over our open. A habitual shover's all-ins are treated as a wide range.
+- **More simulations.** Postflop Monte Carlo goes from 3,000 to 8,000 samples (0.35 s cap). In the Docker sandbox, decisions take 47 ms median and 192 ms at most, with 0 errors.
+- **Wider raises over limps.** It raises opponents that limp often (capped range) more widely, and backs off if they limp-reraise.
+
+The over-fold defence (v3, `USE_OVERFOLD`) is in the code but off: it did not help.
+
+Same seeds (9090), same 10 opponents, 30 duplicate pairs each (600 matches per version):
+
+| opponent | v1 | v4 |
+|---|---|---|
+| overall | 62% ±4% | **64% ±4%** |
+| gto | 48% | 48% |
+| f_shover | 57% | 73% |
+| f_lag | 55% | 63% |
+| supreme | 58% | 63% |
+| montecarlo | 68% | 73% |
+| exploiter | 57% | 53% |
+| f_tag | 90% | 83% |
+
+v4 beats v1 head to head 52% ±13%. `gto` (balanced, never adapts) is still about 50%, and most of those pairings end in draws.
+
+## Big comparison of v1, v2 and ohwow (12 duplicate pairs per pairing, seed 4242, vs 12 rivals and each other)
+`sparring/our_v2` adds two changes to v1: a bet-frequency weighting and learned shove ranges. They did not help.
 
 | bot | match win % overall | vs ohwow |
 |---|---|---|

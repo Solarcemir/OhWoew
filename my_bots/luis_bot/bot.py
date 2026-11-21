@@ -71,7 +71,8 @@ for _a in range(52):
         if _a != _b:
             CLS52[_a, _b] = _cls_of(DECK_STR[_a], DECK_STR[_b])
 
-START_MODE = "solid"      # "bait" starts with the size tell; arena tests showed it costs chips vs AI-written bots
+USE_OVERFOLD = False      # the over-fold defence was tested (v3) and did not help overall
+START_MODE = "solid"     # "bait" starts with the size tell; arena tests showed it costs chips vs AI-written bots
 POSTS = ("small_blind", "big_blind", "ante")
 AGGR = ("raise", "all_in")
 BUCKETS = ("S", "M", "L", "O")
@@ -122,6 +123,12 @@ class Model:
         self.bet_opps = self.bets = 0                    # opp betting when checked to
         self.sd_bets = self.sd_bluffs = 0                # opp postflop bets seen at showdown
         self.sd_calls = self.sd_weak_calls = 0
+        # all-in counting and our own defence record (to catch ourselves over-folding)
+        self.vs_open_shove = 0
+        self.allin_hands = 0                             # hands in which the opponent went all-in
+        self.post_allins = 0
+        self.our_def = []                                # (alpha, folded) for each opponent bet we faced
+        self.vs_iso_n = self.vs_iso_fold = self.vs_iso_raise = 0   # its answers when we raise its limp
         self.hands = 0
         # mode control
         self.mode = START_MODE
@@ -143,6 +150,19 @@ class Model:
 
     def raise_frac(self):
         return blend(self.sb_raise, self.sb_n, 0.6, 6)
+
+    def allin_rate(self):            # share of hands in which the opponent goes all-in
+        return blend(self.allin_hands, self.hands, 0.05, 10)
+
+    def overfold(self):
+        """How much more often we fold to its bets than its bet sizes allow (0 if not).
+        Folding more than alpha = bet/(pot+bet) makes every bluff it makes profitable."""
+        rec = self.our_def[-40:]
+        if len(rec) < 10:
+            return 0.0
+        folded = sum(1 for _, f in rec if f) / len(rec)
+        alpha = sum(a for a, _ in rec) / len(rec)
+        return max(0.0, folded - alpha)
 
     def bluff_frac(self):
         return blend(self.sd_bluffs, self.sd_bets, 0.25, 4)
@@ -196,6 +216,7 @@ class Model:
         opp_called_our_bet = False
         last_our_bet_bucket = None
         shows = {}
+        allin_this_hand = False
         for e in entries:
             a, who, amt, st = e.get("action"), e.get("bot_id"), e.get("amount") or 0, e.get("street")
             if a == "show":
@@ -216,6 +237,10 @@ class Model:
             mine, theirs = contrib.get(me, 0), contrib.get(opp, 0)
             owed_opp = max(0, mine - theirs)
             if who == opp:
+                if a == "all_in":
+                    allin_this_hand = True
+                    if st != "preflop":
+                        self.post_allins += 1
                 if st == "preflop":
                     pre_vol.append((who, a))
                     first_opp = sum(1 for x in pre_vol if x[0] == opp) == 1
@@ -242,6 +267,16 @@ class Model:
                             self.vs_open_call += 1
                         elif a in AGGR:
                             self.vs_open_raise += 1
+                            if a == "all_in":
+                                self.vs_open_shove += 1
+                    elif sb == opp and len(pre_vol) == 3 and pre_vol[0] == (opp, "call") \
+                            and pre_vol[1] == (me, "raise"):
+                        # it limped, we raised (isolation raise): how does it answer?
+                        self.vs_iso_n += 1
+                        if a == "fold":
+                            self.vs_iso_fold += 1
+                        elif a in AGGR:
+                            self.vs_iso_raise += 1
                     elif len(my_prev) >= 2 and my_prev[-1][1] == "raise":
                         self.vs_3b_n += 1
                         if a == "fold":
@@ -261,6 +296,10 @@ class Model:
                     if a in AGGR:
                         opp_post_aggr = True
             elif who == me:
+                if st != "preflop" and theirs > mine:
+                    # how we answered an opponent bet: alpha = the fold rate that makes its bluffs break even
+                    owed_me = theirs - mine
+                    self.our_def.append((owed_me / max(1, pot + owed_me), a == "fold"))
                 if st == "preflop":
                     pre_vol.append((who, a))
                 elif a in AGGR:
@@ -277,6 +316,8 @@ class Model:
                 prev = contrib.get(who, 0)
                 contrib[who] = max(prev, amt)
                 pot += max(0, amt - prev)
+        if allin_this_hand:
+            self.allin_hands += 1
         if opp in shows and shows[opp]:
             board = self.boards.get(h, [])
             if len(board) >= 3:
@@ -365,7 +406,17 @@ def postflop_samples(gs, budget):
     n_bets = sum(1 for a in post if a.get("action") in AGGR)
     n_calls = sum(1 for a in post if a.get("action") == "call")
     n_checks = sum(1 for a in post if a.get("action") == "check")
-    bl = min(1.0, max(0.12, M.bluff_frac() * 1.6))
+    bl = max(0.12, M.bluff_frac() * 1.6)
+    # we never see the hands we fold to, so showdowns under-count its bluffs. If we fold
+    # more often than its bet sizes justify, assume more air (unless showdowns prove it honest).
+    of = M.overfold()
+    if USE_OVERFOLD and of > 0.05 and not (M.sd_bets >= 8 and M.bluff_frac() < 0.1):
+        bl += of * 2.5
+    # an opponent that goes all-in a lot: its all-ins are wide
+    last_opp = [a for a in post if a.get("action") in AGGR]
+    if last_opp and last_opp[-1].get("action") == "all_in":
+        bl = max(bl, M.allin_rate() * 3)
+    bl = min(1.0, bl)
     lvl_w_bet = {0: bl, 0.5: max(bl, 0.6), 1: 0.8, 2: 1.0}
     lvl_w_call = {0: 0.3, 0.5: 1.0, 1: 1.0, 2: 1.0}
     lvl_w_check = {0: 1.0, 0.5: 1.0, 1: 1.0, 2: 0.75}
@@ -377,7 +428,7 @@ def postflop_samples(gs, budget):
     t_end = time.perf_counter() + budget
     n = 0
     rnd = random.random
-    while n < 3000:
+    while n < 8000:
         if (n & 63) == 0 and time.perf_counter() > t_end:
             break
         n += 1
@@ -459,10 +510,15 @@ def preflop(gs):
 
     # facing an all-in (or a bet that commits us): pure pot odds vs their range
     if owed > 0 and (opp_allin or owed >= 0.45 * me_total):
-        if i_sb or n_raises >= 2:
+        # its range = how often this opponent really shoves here (learned, counted)
+        if i_sb and n_raises >= 2:              # it shoved over our open
+            rng = blend(M.vs_open_shove, M.vs_open_n, 0.16, 6)
+        elif i_sb or n_raises >= 2:
             rng = 0.16 if n_raises >= 2 else 0.2
-        else:
-            rng = blend(M.sb_shove, M.sb_n, PF_PUSH_FRAC[akey][k], 6) if S <= 20 else 0.12
+        else:                                   # it shoved first-in from the SB
+            rng = blend(M.sb_shove, M.sb_n, PF_PUSH_FRAC[akey][k] if S <= 20 else 0.12, 6)
+        if opp_allin and M.allin_rate() > 0.3:  # a habitual shover: its shoves are wide
+            rng = max(rng, min(1.0, M.allin_rate()))
         eq = range_eq(h, rng)
         need = owed / (pot + owed)
         dbg.update(eq=round(eq, 3), need=round(need, 3), rng=round(rng, 2))
@@ -502,7 +558,17 @@ def preflop(gs):
 
     # BB after a limp
     if owed == 0:
-        width = 0.35 if M.open_frac() - M.raise_frac() < 0.3 else 0.45
+        # an opponent that limps often limps its middling hands (strong ones get raised),
+        # so its limp range is capped: raise it a lot, unless it fights back
+        limp_share = blend(M.sb_limp, M.sb_n, 0.15, 6)
+        iso_fold = blend(M.vs_iso_fold, M.vs_iso_n, 0.45, 5)
+        iso_raise = blend(M.vs_iso_raise, M.vs_iso_n, 0.12, 5)
+        width = 0.35
+        if limp_share >= 0.12:
+            width = 0.75 if iso_fold > 0.5 else 0.55
+        if iso_raise > 0.25:
+            width = 0.30
+        dbg.update(limp=round(limp_share, 2), iso_fold=round(iso_fold, 2), width=width)
         if S <= 13 and PCT[h] <= PF_PUSH_FRAC[akey][k] * 0.6:
             return {"action": "all_in", "debug": dbg}
         if PCT[h] <= width and random.random() < 0.85:
