@@ -249,9 +249,13 @@ class Profile:
         self.faced = self.folded = 0
         self.vs_me = {}   # (street, raise depth, our bet bucket) -> [folds, times faced]
         self.shown = {}   # their bet bucket -> [sum hand strength, n] at showdown
+        self.rr_n = 0     # times they RE-RAISED one of our raises/bets
+        self.rr_shown = [0.0, 0]   # hand strength they showed after re-raising
 
     def add(self, o):
-        for k in ("hands", "vpip_n", "bets", "calls", "faced", "folded", "allins"):
+        self.rr_shown[0] += o.rr_shown[0]
+        self.rr_shown[1] += o.rr_shown[1]
+        for k in ("hands", "vpip_n", "bets", "calls", "faced", "folded", "allins", "rr_n"):
             setattr(self, k, getattr(self, k) + getattr(o, k))
         for mine, theirs in ((self.vs_me, o.vs_me), (self.shown, o.shown)):
             for key, v in theirs.items():
@@ -300,6 +304,7 @@ class OpponentModel:
         self.last_frac = 0.5
         self.cur_street = -1
         self.n_raises = 0          # voluntary raises so far on the current street
+        self.rr_hand = set()       # players who re-raised this hand
         self.last_depth = 0        # raises that preceded the last raise
 
     def _p(self, name):
@@ -335,6 +340,11 @@ class OpponentModel:
         if street != self.cur_street:
             self.cur_street, self.n_raises = street, 0
         if kind == "raise":
+            if self.n_raises >= 1 and player != self.me:
+                self.rr_hand.add(player)
+                if record and self.last_raiser == self.me:
+                    for p in (self._p(player), self.table):
+                        p.rr_n += 1
             self.last_raiser = player
             self.last_depth = min(self.n_raises, 2)
             self.n_raises += 1
@@ -388,6 +398,10 @@ class OpponentModel:
         hole = [parse_card(c) for c in hole]
         board = [parse_card(c) for c in board]
         pct = _made_pct(hole, board) if board else preflop_pct(hole)
+        if player in self.rr_hand:
+            for p in (self._p(player), self.table):
+                p.rr_shown[0] += pct
+                p.rr_shown[1] += 1
         key = _bucket(self.last_bet[player])
         for p in (self._p(player), self.table):
             rec = p.shown.setdefault(key, [0.0, 0])
@@ -428,6 +442,19 @@ class OpponentModel:
         if n < 4:
             return None, 0.0
         return min(0.9, max(0.0, (s / n - 0.35) * 2.0)), min(0.85, n / 15)
+
+    def rr_read(self, ids):
+        """How to read THEIR re-raises: (tightness|None, weight, rr_freq|None).
+        Showdowns of re-raises teach how strong they are; how often they re-raise
+        our bets (vs how often they faced them) says how bluffy they are."""
+        prof = self._combined(ids)
+        s, n = prof.rr_shown
+        lt, w = (None, 0.0)
+        if n >= 2:
+            lt, w = min(0.9, max(0.0, (s / n - 0.35) * 2.0)), min(0.85, n / 6)
+        faced = sum(v[1] for v in prof.vs_me.values())
+        freq = prof.rr_n / faced if faced >= 8 else None
+        return lt, w, freq
 
     def hand_tight(self, ids):
         vals = [self.hand_t.get(i, 0.0) for i in ids] if ids else list(self.hand_t.values())
@@ -518,6 +545,15 @@ def _decide_core(state):
         lt, w = MODEL.learned_tight(ids, _bucket(to_call / max(pot - to_call, 1)))
         if lt is not None:                     # showdown evidence beats heuristics
             t = (1 - w) * t + w * lt
+    if to_call > 0 and raises >= 2 and not (pre and to_call <= bb):   # facing a RE-raise
+        lt_rr, w_rr, rr_freq = MODEL.rr_read(ids)
+        if lt_rr is not None:
+            t = (1 - w_rr) * t + w_rr * lt_rr          # what their re-raises have shown
+        if rr_freq is not None:
+            if rr_freq > 0.30:
+                t *= 0.55          # re-raises us constantly: mostly pressure/bluffs
+            elif rr_freq < 0.08:
+                t = min(0.9, t * 1.25 + 0.05)   # rarely re-raises: it's the nuts
     if not (pre and to_call <= bb):
         hist = MODEL.hand_tight(ids)           # earlier streets still count
         t = 1 - (1 - t) * (1 - (0.6 if to_call > 0 else 0.3) * hist)

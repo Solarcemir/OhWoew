@@ -41,3 +41,11 @@ Verified 2026-11-21 with the kit's exact `docker run` flags (`--cpus 0.5 --memor
 `python3 play.py my_bots/ohwow bots/caller --docker` (and sparring `lag`, `tag`) finish with no errors/timeouts;
 average think ~400 ms, max ~475 ms vs the 2 s limit (`CONFIG["time_budget"]=0.45`).
 On your machine (WSL + Docker Desktop): `make sandbox` then `python3 play.py my_bots/ohwow bots/caller --docker`.
+
+## Big head-to-head runs (bot vs bot, e.g. ohwow vs teammate's bot)
+Needs WSL/Linux + the kit venv. From the repo root:
+```
+git pull
+WORKERS=8 python3 tools/run_matches.py my_bots/ohwow 100 my_bots/<teammate_bot> sparring/lag sparring/tag sparring/maniac sparring/shover sparring/nit bots/caller
+```
+Seats alternate by seed; output shows win rate with a 95% confidence interval. Only trust a difference when the intervals don't overlap (use 100+ matches).
