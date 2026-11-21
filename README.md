@@ -8,7 +8,6 @@ and adapts to whoever it is playing instead of following a fixed script.
 
 - Entry point: [`my_bots/ohwow/bot.py`](my_bots/ohwow/bot.py) (`decide(game_state)`, Python 3.10)
 - Kit rules and prize list: [`docs/KIT_README.md`](docs/KIT_README.md)
-- Team notes and exact commands: [`docs/TEAM_NOTES.md`](docs/TEAM_NOTES.md)
 
 ## How it decides
 
