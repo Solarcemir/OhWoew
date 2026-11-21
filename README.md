@@ -8,7 +8,14 @@ and adapts to whoever it is playing instead of following a fixed script.
 
 - Entry point: [`my_bots/ohwow/bot.py`](my_bots/ohwow/bot.py) (`decide(game_state)`, Python 3.10)
 - Kit rules and prize list: [`docs/KIT_README.md`](docs/KIT_README.md)
-- Video walkthrough, about 3 minutes with English narration and subtitles: [`docs/ohwow_explained.mp4`](docs/ohwow_explained.mp4) (subtitles: [`docs/ohwow_explained.srt`](docs/ohwow_explained.srt))
+
+## Video walkthrough
+
+<video controls width="100%">
+  <source src="docs/ohwow_explained.mp4" type="video/mp4">
+</video>
+
+English narration and subtitles: [`ohwow_explained.srt`](docs/ohwow_explained.srt).
 
 ## How it decides
 
