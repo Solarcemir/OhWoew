@@ -112,7 +112,6 @@ class Model:
         # preflop
         self.sb_n = self.sb_fold = self.sb_limp = self.sb_raise = self.sb_shove = 0
         self.vs_open_n = self.vs_open_fold = self.vs_open_call = self.vs_open_raise = 0
-        self.vs_open_shove = 0
         self.vs_shove_n = self.vs_shove_call = 0
         self.vs_3b_n = self.vs_3b_fold = 0
         # postflop, response to our bets by size bucket
@@ -144,9 +143,6 @@ class Model:
 
     def raise_frac(self):
         return blend(self.sb_raise, self.sb_n, 0.6, 6)
-
-    def bet_rate(self):              # how often the opponent bets postflop when checked to
-        return blend(self.bets, self.bet_opps, 0.4, 8)
 
     def bluff_frac(self):
         return blend(self.sd_bluffs, self.sd_bets, 0.25, 4)
@@ -246,8 +242,6 @@ class Model:
                             self.vs_open_call += 1
                         elif a in AGGR:
                             self.vs_open_raise += 1
-                            if a == "all_in":
-                                self.vs_open_shove += 1
                     elif len(my_prev) >= 2 and my_prev[-1][1] == "raise":
                         self.vs_3b_n += 1
                         if a == "fold":
@@ -371,12 +365,7 @@ def postflop_samples(gs, budget):
     n_bets = sum(1 for a in post if a.get("action") in AGGR)
     n_calls = sum(1 for a in post if a.get("action") == "call")
     n_checks = sum(1 for a in post if a.get("action") == "check")
-    # how much an opponent bet should discount its "nothing" hands. Showdowns alone
-    # under-count bluffs (we never see the hands we fold to), so an opponent that bets
-    # most of the time it is checked to must be betting air too.
-    bl_sd = M.bluff_frac() * 1.6
-    bl_agg = (M.bet_rate() - 0.3) * 2.0
-    bl = min(1.0, max(0.12, bl_sd, bl_agg))
+    bl = min(1.0, max(0.12, M.bluff_frac() * 1.6))
     lvl_w_bet = {0: bl, 0.5: max(bl, 0.6), 1: 0.8, 2: 1.0}
     lvl_w_call = {0: 0.3, 0.5: 1.0, 1: 1.0, 2: 1.0}
     lvl_w_check = {0: 1.0, 0.5: 1.0, 1: 1.0, 2: 0.75}
@@ -413,7 +402,7 @@ def postflop_samples(gs, budget):
                         lvl = 0.5
                         break
         if n_bets:
-            w *= lvl_w_bet[lvl] ** min(n_bets, 2)
+            w *= lvl_w_bet[lvl] ** min(n_bets, 3)
         if n_calls:
             w *= lvl_w_call[lvl] ** min(n_calls, 2)
         if n_checks:
@@ -470,14 +459,10 @@ def preflop(gs):
 
     # facing an all-in (or a bet that commits us): pure pot odds vs their range
     if owed > 0 and (opp_allin or owed >= 0.45 * me_total):
-        # range = how often this opponent actually shoves in this spot (learned), so a
-        # bot that shoves every hand gets called by everything that beats a random hand
-        if i_sb and n_raises >= 2:              # it shoved over our open
-            rng = blend(M.vs_open_shove, M.vs_open_n, 0.16, 6)
-        elif i_sb or n_raises >= 2:
+        if i_sb or n_raises >= 2:
             rng = 0.16 if n_raises >= 2 else 0.2
-        else:                                   # it shoved first-in from the SB
-            rng = blend(M.sb_shove, M.sb_n, PF_PUSH_FRAC[akey][k] if S <= 20 else 0.12, 6)
+        else:
+            rng = blend(M.sb_shove, M.sb_n, PF_PUSH_FRAC[akey][k], 6) if S <= 20 else 0.12
         eq = range_eq(h, rng)
         need = owed / (pot + owed)
         dbg.update(eq=round(eq, 3), need=round(need, 3), rng=round(rng, 2))

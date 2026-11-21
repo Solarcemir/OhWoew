@@ -55,6 +55,7 @@ class NullLog:
 def play_one(paths, names, seed, hands_cap, time_limit_ms):
     """One freezeout match; returns {name: (place, final_stack, timeouts, errors)} and hands."""
     bots = [Bot(n, p) for n, p in zip(names, paths)]
+    os.environ["BOT_MATCH_SEED"] = str(seed)   # only the test-only sparring/supreme bot reads this
     config = MatchConfig(mode="freezeout", hands=hands_cap, starting_stack=10_000,
                          structure=structures.parse("standard", 10_000), seed=seed,
                          time_limit_ms=time_limit_ms)

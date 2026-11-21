@@ -41,7 +41,26 @@ set BOT_ENV_ALLOW=SYSTEMROOT,WINDIR      # Windows only: the kit strips these an
 
 On Mac, Linux or WSL, use the normal kit setup and drop the `BOT_ENV_ALLOW` line.
 
-## Results so far (luis_bot vs ohwow, 40 duplicate pairs, seed 777)
+## Big comparison (12 duplicate pairs per pairing, seed 4242, vs 12 rivals and each other)
+`luis_bot` here is **v1** (`sparring/our_v1`). `sparring/our_v2` adds two changes: a bet-frequency weighting and learned shove ranges. They did not help.
+
+| bot | match win % overall | vs ohwow |
+|---|---|---|
+| our_v1 (= luis_bot) | 68% ±5% | 62% ±19% |
+| our_v2 | 64% ±5% | 54% ±20% |
+| ohwow | 59% ±5% | - |
+
+The hardest opponent is `sparring/gto`: v1 wins only 46% ±20% of matches against it.
+
+## Test-only bots (never entries)
+- `sparring/supreme`: knows the whole board before it is dealt, but not the opponent's cards. It rebuilds the deck from `BOT_MATCH_SEED`, which `tools/arena.py` sets.
+  - It loses to v1 (v1 wins 72%) and to v2 (66%), because its betting is transparent.
+  - It ties ohwow (50%), beats gto (gto wins 28%) and beats f_lag (f_lag wins 6%).
+- `sparring/claude_live`: a seat played live by Claude through `tools/relay.py`. Start `relay.py <dir>`, run play.py with `--time-limit-ms 600000`, and answer each decision with `relay_ctl.py <dir> answer '{...}'`.
+  - In 18 real hands, Claude was +2,404 against luis_bot.
+  - Read: luis_bot leads most flops and over-bluffs a player that starts calling.
+
+## Earlier result (luis_bot vs ohwow, 40 duplicate pairs, seed 777)
 - ohwow 8 pairing wins, 28 draws, luis_bot 4. In matches, ohwow 44, luis_bot 36: ohwow leads, but the difference is within noise at 80 matches.
 - The main leak found in luis_bot was folding the turn too often to ohwow's double barrels. Fixed since (the bet-frequency weighting), together with an always-shover leak. A re-test is running.
 - In the Docker sandbox (half core, eval7 0.1.7), luis_bot takes about 11 ms median per decision and 97 ms at most, with 0 errors.
