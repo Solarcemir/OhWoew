@@ -30,12 +30,32 @@ Precomputed strategies give fast, solid baseline play. Probability-based simulat
 accurate equity estimates postflop. Opponent learning then shifts every decision toward whatever is
 most profitable against the player across the table.
 
-## Running it
+## Entry
 
-From the repo root, with the kit's tooling:
+- **Team name:** `ohwow`. **Entry folder:** [`my_bots/ohwow/`](my_bots/ohwow/), with `bot.py` and `data/`.
+- `data/` (about 340 KB) holds the precomputed tables and is read only at import time, from the folder next to `bot.py` or from `BOT_DATA_DIR`:
+  - `eqmat.npy`: the 169×169 preflop equity matrix.
+  - `pushfold.json`: heads-up Nash push/fold strategies by stack depth, with and without antes.
+  - `classes.json`: the names of the 169 starting-hand classes.
+- `pokercore/` is the kit's code, unmodified.
+
+## Validation and environment
+
+The bot is built for the tournament environment and stays inside its rules:
+
+- **Python 3.10.** Imports: the standard library (`json`, `os`, `random`, `time`, `collections`), `eval7` and `numpy`. No other libraries.
+- **Rules:** no network, no file writes, no subprocesses, no threads, and no `eval`, `exec` or `pickle`.
+- **Time:** in the kit's Docker sandbox (half a CPU core, 768 MB, no network, read-only filesystem), a decision takes about 15 ms on median and under 200 ms at worst, against the 2-second limit.
+- **Errors:** every decision is wrapped so that any error falls back to a legal action (check, or fold when facing a bet).
+
+From the repo root, with the kit's setup (`make install` in a Python 3.10 environment):
 
 ```
-make validate BOT=my_bots/ohwow
+make validate BOT=my_bots/ohwow            # the organisers' checks: passes
+python3 play.py my_bots/ohwow bots/caller   # a local match
+make sandbox                                # build the tournament sandbox image (once)
+python3 play.py my_bots/ohwow bots/caller --docker   # the same match inside the sandbox
 ```
 
-The move limit is 2 seconds per decision; the bot uses a small fraction of that.
+`make validate BOT=my_bots/ohwow` reports `PASSED — my_bots/ohwow`, and the bot plays full matches in the
+Docker sandbox with no timeouts or errors.
